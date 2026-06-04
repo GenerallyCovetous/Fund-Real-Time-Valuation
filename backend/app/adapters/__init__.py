@@ -1,0 +1,1 @@
+"""Fund data adapter implementations."""
