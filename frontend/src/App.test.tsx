@@ -2,11 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
+const fundName = "招商中证白酒指数(LOF)A";
+
 const valuationResponse = {
   items: [
     {
       code: "161725",
-      name: "招商中证白酒指数(LOF)A",
+      name: fundName,
       estimatedNetValue: 0.9123,
       estimatedChangePercent: 1.37,
       estimatedChangeAmount: null,
@@ -29,10 +31,12 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("renders empty state", () => {
+  it("renders a readable empty workspace", () => {
     render(<App />);
 
     expect(screen.getByText("还没有关注基金")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("输入基金代码或名称")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新全部" })).toBeDisabled();
   });
 
   it("searches and adds a fund", async () => {
@@ -43,7 +47,7 @@ describe("App", () => {
           new Response(
             JSON.stringify({
               query: "白酒",
-              results: [{ code: "161725", name: "招商中证白酒指数(LOF)A" }],
+              results: [{ code: "161725", name: fundName }],
               updatedAt: "2026-06-03T12:00:00Z",
             }),
           ),
@@ -60,26 +64,23 @@ describe("App", () => {
       target: { value: "白酒" },
     });
 
-    const result = await screen.findByText("招商中证白酒指数(LOF)A");
+    const result = await screen.findByText(fundName);
     fireEvent.click(result);
 
     await waitFor(() => {
       expect(screen.getByText("161725")).toBeInTheDocument();
-      expect(screen.getByText("+1.37%")).toBeInTheDocument();
+      expect(screen.getAllByText("+1.37%").length).toBeGreaterThan(0);
     });
   });
 
   it("removes a watched fund from local storage", async () => {
-    window.localStorage.setItem(
-      "frtv.watchlist",
-      JSON.stringify([{ code: "161725", name: "招商中证白酒指数(LOF)A" }]),
-    );
+    window.localStorage.setItem("frtv.watchlist", JSON.stringify([{ code: "161725", name: fundName }]));
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(valuationResponse)));
 
     render(<App />);
 
-    await screen.findByText("+1.37%");
-    fireEvent.click(screen.getByLabelText("移除 招商中证白酒指数(LOF)A"));
+    await screen.findAllByText("+1.37%");
+    fireEvent.click(screen.getByLabelText(`移除 ${fundName}`));
 
     expect(screen.getByText("还没有关注基金")).toBeInTheDocument();
     expect(window.localStorage.getItem("frtv.watchlist")).toBe("[]");
