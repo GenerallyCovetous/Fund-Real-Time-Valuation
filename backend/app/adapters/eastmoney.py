@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
-from app.models.fund import FundSearchResult, FundValuation
+from app.models.fund import FundPerformancePoint, FundSearchResult, FundValuation
 
 FUND_LIST_URL = "https://fund.eastmoney.com/js/fundcode_search.js"
 VALUATION_URL_TEMPLATE = "https://fundgz.1234567.com.cn/js/{code}.js"
+PERFORMANCE_URL_TEMPLATE = "https://fund.eastmoney.com/pingzhongdata/{code}.js"
 
 
 def decode_fund_list_payload(content: bytes) -> str:
@@ -113,6 +115,50 @@ def parse_valuation_payload(code: str, payload: str) -> FundValuation:
     )
 
 
+def parse_performance_payload(
+    code: str,
+    payload: str,
+    days: int = 30,
+) -> list[FundPerformancePoint]:
+    match = re.search(
+        r"var\s+Data_netWorthTrend\s*=\s*(\[.*?\])\s*;",
+        payload,
+        re.DOTALL,
+    )
+    if match is None:
+        return []
+
+    try:
+        rows = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return []
+
+    if not isinstance(rows, list):
+        return []
+
+    points: list[FundPerformancePoint] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        timestamp = row.get("x")
+        daily_change = row.get("equityReturn")
+        if timestamp in (None, "") or daily_change in (None, ""):
+            continue
+
+        try:
+            date = datetime.fromtimestamp(float(timestamp) / 1000, UTC).date().isoformat()
+            points.append(
+                FundPerformancePoint(
+                    date=date,
+                    dailyChangePercent=float(daily_change),
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+
+    return points[-days:]
+
+
 class EastmoneyFundAdapter:
     def __init__(self, timeout_seconds: float = 5.0) -> None:
         self.timeout_seconds = timeout_seconds
@@ -143,6 +189,20 @@ class EastmoneyFundAdapter:
 
         response.raise_for_status()
         return parse_valuation_payload(code, response.text)
+
+    async def get_performance(self, code: str, days: int) -> list[FundPerformancePoint]:
+        url = PERFORMANCE_URL_TEMPLATE.format(code=code)
+        async with httpx.AsyncClient(
+            timeout=self.timeout_seconds,
+            trust_env=False,
+        ) as client:
+            response = await client.get(url, params={"rt": str(int(time.time() * 1000))})
+
+        if response.status_code == 404:
+            return []
+
+        response.raise_for_status()
+        return parse_performance_payload(code, response.text, days=days)
 
 
 def _extract_fund_rows(payload: str) -> list[Any]:

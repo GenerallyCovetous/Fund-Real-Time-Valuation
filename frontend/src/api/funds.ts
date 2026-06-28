@@ -1,4 +1,8 @@
-import type { FundSearchResponse, FundValuationResponse } from "../types/fund";
+import type {
+  FundPerformanceResponse,
+  FundSearchResponse,
+  FundValuationResponse,
+} from "../types/fund";
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -23,4 +27,14 @@ export async function fetchFundValuations(
     body: JSON.stringify({ codes, force }),
   });
   return readJson<FundValuationResponse>(response);
+}
+
+export async function fetchFundPerformance(
+  code: string,
+  days = 30,
+): Promise<FundPerformanceResponse> {
+  const response = await fetch(
+    `/api/funds/${encodeURIComponent(code)}/performance?days=${days}`,
+  );
+  return readJson<FundPerformanceResponse>(response);
 }

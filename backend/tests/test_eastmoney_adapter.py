@@ -3,9 +3,11 @@ import pytest
 
 from app.adapters.eastmoney import (
     FUND_LIST_URL,
+    PERFORMANCE_URL_TEMPLATE,
     VALUATION_URL_TEMPLATE,
     EastmoneyFundAdapter,
     parse_fund_search_payload,
+    parse_performance_payload,
     parse_valuation_payload,
 )
 
@@ -78,6 +80,41 @@ def test_parse_valuation_payload_reads_normal_jsonp():
     assert valuation.error is None
 
 
+def test_parse_performance_payload_reads_latest_daily_changes():
+    performance = parse_performance_payload(
+        "161725",
+        """
+var Data_netWorthTrend = [
+  {"x":1782576000000,"y":1.0100,"equityReturn":0.12},
+  {"x":1782662400000,"y":1.0200,"equityReturn":0.99},
+  {"x":1782748800000,"y":1.0150,"equityReturn":-0.49}
+];
+var Data_ACWorthTrend = [];
+""",
+        days=2,
+    )
+
+    assert [point.date for point in performance] == ["2026-06-28", "2026-06-29"]
+    assert [point.daily_change_percent for point in performance] == [0.99, -0.49]
+
+
+def test_parse_performance_payload_skips_items_without_daily_change():
+    performance = parse_performance_payload(
+        "161725",
+        """
+var Data_netWorthTrend = [
+  {"x":1782576000000,"y":1.0100},
+  {"x":1782662400000,"y":1.0200,"equityReturn":""},
+  {"x":1782748800000,"y":1.0150,"equityReturn":-0.49}
+];
+""",
+        days=30,
+    )
+
+    assert len(performance) == 1
+    assert performance[0].daily_change_percent == -0.49
+
+
 def test_parse_valuation_payload_returns_failed_for_empty_jsonp():
     valuation = parse_valuation_payload("161725", "jsonpgz();")
 
@@ -137,3 +174,24 @@ async def test_adapter_get_valuation_returns_failed_for_404(respx_mock):
     assert valuation.code == "161725"
     assert valuation.status == "failed"
     assert valuation.error == "valuation data not available"
+
+
+@pytest.mark.anyio
+async def test_adapter_get_performance_fetches_eastmoney_trend(respx_mock):
+    respx_mock.get(PERFORMANCE_URL_TEMPLATE.format(code="161725")).mock(
+        return_value=httpx.Response(
+            200,
+            text="""
+var Data_netWorthTrend = [
+  {"x":1782576000000,"y":1.0100,"equityReturn":0.12},
+  {"x":1782662400000,"y":1.0200,"equityReturn":0.99}
+];
+""",
+        )
+    )
+    adapter = EastmoneyFundAdapter(timeout_seconds=1)
+
+    performance = await adapter.get_performance("161725", days=30)
+
+    assert len(performance) == 2
+    assert performance[1].daily_change_percent == 0.99

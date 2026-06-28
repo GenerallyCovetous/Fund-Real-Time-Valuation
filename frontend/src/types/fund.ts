@@ -27,3 +27,14 @@ export interface FundValuationResponse {
   items: FundValuation[];
   updatedAt: string;
 }
+
+export interface FundPerformancePoint {
+  date: string;
+  dailyChangePercent: number;
+}
+
+export interface FundPerformanceResponse {
+  code: string;
+  items: FundPerformancePoint[];
+  updatedAt: string;
+}

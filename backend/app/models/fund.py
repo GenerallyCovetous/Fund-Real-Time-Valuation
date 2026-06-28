@@ -42,3 +42,14 @@ class FundValuationRequest(FundBaseModel):
 class FundValuationResponse(FundBaseModel):
     items: list[FundValuation]
     updated_at: datetime = Field(alias="updatedAt")
+
+
+class FundPerformancePoint(FundBaseModel):
+    date: str
+    daily_change_percent: float = Field(alias="dailyChangePercent")
+
+
+class FundPerformanceResponse(FundBaseModel):
+    code: FundCode
+    items: list[FundPerformancePoint]
+    updated_at: datetime = Field(alias="updatedAt")

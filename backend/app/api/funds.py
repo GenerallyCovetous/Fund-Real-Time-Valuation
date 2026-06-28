@@ -6,6 +6,9 @@ from app.adapters.eastmoney import EastmoneyFundAdapter
 from app.core.cache import TTLCache
 from app.core.config import settings
 from app.models.fund import (
+    FundCode,
+    FundPerformancePoint,
+    FundPerformanceResponse,
     FundSearchResponse,
     FundSearchResult,
     FundValuation,
@@ -22,6 +25,9 @@ service = FundService(
         ttl_seconds=settings.search_cache_ttl_seconds
     ),
     valuation_cache=TTLCache[FundValuation](
+        ttl_seconds=settings.valuation_cache_ttl_seconds
+    ),
+    performance_cache=TTLCache[list[FundPerformancePoint]](
         ttl_seconds=settings.valuation_cache_ttl_seconds
     ),
 )
@@ -54,4 +60,22 @@ async def get_valuations(payload: FundValuationRequest) -> FundValuationResponse
         raise HTTPException(
             status_code=502,
             detail="fund valuation data source failed",
+        ) from exc
+
+
+@router.get(
+    "/{code}/performance",
+    response_model=FundPerformanceResponse,
+    response_model_by_alias=True,
+)
+async def get_performance(
+    code: FundCode,
+    days: int = Query(default=30, ge=1, le=60),
+) -> FundPerformanceResponse:
+    try:
+        return await service.performance(code, days=days)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="fund performance data source failed",
         ) from exc
